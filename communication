@@ -1,0 +1,81 @@
+#required libraries
+import time
+import machine
+import pycom
+from machine import Pin
+from pycom import pulses_get
+from network import LoRa
+import socket
+
+
+
+#pulsewidth modulation pin & output light trigger pin declarations
+pwPin1 = Pin('P9', mode = Pin.IN)
+
+triggerPin = Pin('P4', mode = Pin.OUT)
+
+print("Starting up LOPY for comm")   #check statement to note that program is loaded onto chip
+
+#lopy to lopy communication set up with LoRa channel & socket object s
+lora = LoRa(mode=LoRa.LORA)
+
+s = socket.socket(socket.AF_LORA, socket.SOCK_RAW)
+
+#function for ultrasonic rangefinder reading PWM signal, if no PWM signal received, then default to sensor 1 value
+def read_sensors():
+
+    
+    sensor1 = [(1, 12000), (0, 0)]
+    pulse1 = pulses_get(pwPin1, 7000000)   #timeouts can be variable
+    if len(pulse1) == 0:
+        sensor1 = sensor1
+
+    else:
+        sensor1 = pulse1
+
+    return sensor1
+
+#loop to read ultrasonic rangefinder & determine whether to turn light on or off & transmit "high" or "low" signal
+def loop():
+
+
+    x = read_sensors()
+    print(x)
+    z = x[0][1]
+
+
+    if z <= 4000:
+        triggerPin.value(1)
+        print("High")
+        s.setblocking(True)
+        a = "H"
+        s.send(a)
+
+    else:
+        triggerPin.value(0)
+        print("Low")
+        s.setblocking(True)
+        b = "L"
+        s.send(b)
+    return None
+
+#loop that receives data and executes output signal sent from other LoPy; if signal received is high, trigger pin driven high; 
+#if signal received is low, trigger pin is driven/kept low
+while True:
+
+    time.sleep(0.005)
+    loop()
+    time.sleep(1)
+    print("Packaging check")
+    s.setblocking(False)
+    data = s.recv(64)
+    print(data)
+    if len(data) == 0:
+        triggerPin.value(0)
+    elif ord(data) == 0x48:
+        triggerPin.value(1)
+        time.sleep(7)
+    elif ord(data) == 0x20:
+        triggerPin.value(0)
+    else:
+        triggerPin.value(0)
